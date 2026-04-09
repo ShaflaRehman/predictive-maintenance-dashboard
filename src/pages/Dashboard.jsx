@@ -1,4 +1,3 @@
-// pages/Dashboard.jsx
 import { useState, useEffect } from "react";
 import {
   SystemStatusCard,
@@ -9,14 +8,16 @@ import {
   TelemetryCharts,
   StatsPanel,
   ControlPanel,
+  DegradationCharts,
 } from "../components/dashboard-components";
 import { Loading } from "../components/Loading";
-import { 
-  getSystemStatus, 
-  getMachineTelemetry, 
-  getPredictions, 
+import {
+  getSystemStatus,
+  getMachineTelemetry,
+  getPredictions,
+  getDegradationData,
   connectToLiveStream,
-  getTelemetryHistory 
+  getTelemetryHistory,
 } from "../services/api";
 import "../styles/dashboard.css";
 
@@ -27,6 +28,7 @@ const Dashboard = () => {
   const [temperatureData, setTemperatureData] = useState([]);
   const [currentData, setCurrentData] = useState([]);
   const [prediction, setPrediction] = useState(null);
+  const [degradationData, setDegradationData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(new Date());
@@ -37,19 +39,19 @@ const Dashboard = () => {
   const [dataSource, setDataSource] = useState("live");
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  // ========================
-  // INITIAL DATA FETCH
-  // ========================
   useEffect(() => {
     const fetchInitialData = async () => {
       setLoading(true);
       try {
-        const [system, telemetry] = await Promise.all([
+        const [system, telemetry, pred, degradation] = await Promise.all([
           getSystemStatus(),
-          getMachineTelemetry()
+          getMachineTelemetry(),
+          getPredictions(),
+          getDegradationData(),
         ]);
 
         setSystemData(system);
+        setPrediction(pred);
 
         setMachineData({
           vibrationRMS: telemetry.vibration,
@@ -60,6 +62,8 @@ const Dashboard = () => {
         setVibrationData([{ time: telemetry.timestamp, value: telemetry.vibration }]);
         setTemperatureData([{ time: telemetry.timestamp, value: telemetry.temperature }]);
         setCurrentData([{ time: telemetry.timestamp, value: telemetry.current }]);
+
+        setDegradationData(degradation?.series || []);
 
         setError(null);
         setIsStreaming(true);
@@ -75,35 +79,37 @@ const Dashboard = () => {
     fetchInitialData();
   }, []);
 
-  // ========================
-  // LOAD HISTORY DATA
-  // ========================
   const loadHistoryData = async () => {
     setHistoryLoading(true);
     setDataSource("history");
     setIsPaused(true);
-    
+
     try {
       const history = await getTelemetryHistory();
-      
+
       if (history && history.length > 0) {
-        const filteredHistory = history.slice(-timeWindow);
-        
-        // ✅ Only update charts, cards are untouched
-        setVibrationData(filteredHistory.map(item => ({
-          time: item.time,
-          value: item.vibration
-        })));
-        
-        setTemperatureData(filteredHistory.map(item => ({
-          time: item.time,
-          value: item.temperature
-        })));
-        
-        setCurrentData(filteredHistory.map(item => ({
-          time: item.time,
-          value: item.current
-        })));
+        const filteredHistory = timeWindow === 10000 ? history : history.slice(-timeWindow);
+
+        setVibrationData(
+          filteredHistory.map((item) => ({
+            time: item.time,
+            value: item.vibration,
+          }))
+        );
+
+        setTemperatureData(
+          filteredHistory.map((item) => ({
+            time: item.time,
+            value: item.temperature,
+          }))
+        );
+
+        setCurrentData(
+          filteredHistory.map((item) => ({
+            time: item.time,
+            value: item.current,
+          }))
+        );
       }
     } catch (err) {
       console.error("Error loading history:", err);
@@ -112,9 +118,6 @@ const Dashboard = () => {
     }
   };
 
-  // ========================
-  // SWITCH TO LIVE MODE
-  // ========================
   const switchToLiveMode = () => {
     setDataSource("live");
     setIsPaused(false);
@@ -123,34 +126,34 @@ const Dashboard = () => {
     setCurrentData([]);
   };
 
-  // ========================
-  // PREDICTIONS
-  // ========================
   useEffect(() => {
-    const fetchPrediction = async () => {
+    const fetchPredictionAndDegradation = async () => {
       try {
-        const pred = await getPredictions();
+        const [system, pred, degradation] = await Promise.all([
+          getSystemStatus(),
+          getPredictions(),
+          getDegradationData(),
+        ]);
 
         if (pred.prediction === "faulty" && prediction?.prediction !== "faulty") {
           setNewFaultDetected(true);
           setTimeout(() => setNewFaultDetected(false), 3000);
         }
 
+        setSystemData(system);
         setPrediction(pred);
+        setDegradationData(degradation?.series || []);
       } catch (err) {
-        console.error("Error fetching predictions:", err);
+        console.error("Error fetching prediction/degradation:", err);
       }
     };
 
-    fetchPrediction();
-    const interval = setInterval(fetchPrediction, 5000);
+    fetchPredictionAndDegradation();
+    const interval = setInterval(fetchPredictionAndDegradation, 2000);
 
     return () => clearInterval(interval);
-  }, [prediction]);
+  }, [prediction?.prediction]);
 
-  // ========================
-  // LIVE TELEMETRY STREAM
-  // ========================
   useEffect(() => {
     if (isPaused || dataSource === "history") return;
 
@@ -159,7 +162,6 @@ const Dashboard = () => {
         setLastUpdate(new Date());
         setIsStreaming(true);
 
-        // ✅ Always update machine cards from live stream
         setMachineData((prev) => ({
           ...prev,
           vibrationRMS: data.vibration,
@@ -167,54 +169,59 @@ const Dashboard = () => {
           current: data.current,
         }));
 
-        setVibrationData((prev) => [
-          ...prev.slice(-(timeWindow - 1)),
-          { time: data.timestamp, value: data.vibration },
-        ]);
-        setTemperatureData((prev) => [
-          ...prev.slice(-(timeWindow - 1)),
-          { time: data.timestamp, value: data.temperature },
-        ]);
-        setCurrentData((prev) => [
-          ...prev.slice(-(timeWindow - 1)),
-          { time: data.timestamp, value: data.current },
-        ]);
+        setVibrationData((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.time === data.timestamp) return prev;
+          return [
+            ...prev.slice(-(timeWindow - 1)),
+            { time: data.timestamp, value: data.vibration },
+          ];
+        });
+
+        setTemperatureData((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.time === data.timestamp) return prev;
+          return [
+            ...prev.slice(-(timeWindow - 1)),
+            { time: data.timestamp, value: data.temperature },
+          ];
+        });
+
+        setCurrentData((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.time === data.timestamp) return prev;
+          return [
+            ...prev.slice(-(timeWindow - 1)),
+            { time: data.timestamp, value: data.current },
+          ];
+        });
       },
-      (error) => {
-        console.error("Live stream error:", error);
+      (streamError) => {
+        console.error("Live stream error:", streamError);
         setIsStreaming(false);
       },
-      2000
+      5000
     );
 
     return cleanup;
   }, [isPaused, timeWindow, dataSource]);
 
-  // ========================
-  // RELOAD HISTORY WHEN TIME WINDOW CHANGES
-  // ========================
   useEffect(() => {
     if (dataSource === "history") {
       loadHistoryData();
     }
   }, [timeWindow]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ========================
-  // CONTROL PANEL HANDLERS
-  // ========================
   const handlePauseResume = () => setIsPaused(!isPaused);
-  
+
   const handleResetData = () => {
     setVibrationData([]);
     setTemperatureData([]);
     setCurrentData([]);
   };
-  
+
   const handleTimeWindowChange = (window) => setTimeWindow(window);
 
-  // ========================
-  // LOADING / ERROR STATE
-  // ========================
   if (loading) return <Loading />;
 
   if (error) {
@@ -229,23 +236,21 @@ const Dashboard = () => {
     );
   }
 
-  // ========================
-  // RENDER DASHBOARD
-  // ========================
   return (
     <div className="dashboard">
-      {/* HEADER */}
       <div className="dashboard-header">
         <div className="header-left">
           <h1>Machine Health Monitoring</h1>
           <p className="subtitle">Environment - 07 | Wiser Factory</p>
         </div>
         <div className="header-controls">
-          <LiveIndicator isStreaming={isStreaming && dataSource === "live"} lastUpdate={lastUpdate} />
+          <LiveIndicator
+            isStreaming={isStreaming && dataSource === "live"}
+            lastUpdate={lastUpdate}
+          />
         </div>
       </div>
 
-      {/* CONTROL PANEL */}
       <ControlPanel
         isPaused={isPaused}
         timeWindow={timeWindow}
@@ -258,16 +263,13 @@ const Dashboard = () => {
         historyLoading={historyLoading}
       />
 
-      {/* TOP ROW */}
       <div className="top-row">
         <SystemStatusCard data={systemData} newFault={newFaultDetected} />
         <PredictionPanel prediction={prediction} />
       </div>
 
-      {/* MACHINE HEALTH CARD */}
       <MachineHealthCard machine={machineData} />
 
-      {/* STATISTICS PANEL */}
       <StatsPanel
         vibrationData={vibrationData}
         temperatureData={temperatureData}
@@ -275,14 +277,17 @@ const Dashboard = () => {
         machineData={machineData}
       />
 
-      {/* TELEMETRY CHARTS */}
       <TelemetryCharts
         vibrationData={vibrationData}
         temperatureData={temperatureData}
         currentData={currentData}
       />
 
-      {/* MAINTENANCE BOX */}
+      <DegradationCharts
+        degradationData={degradationData}
+        prediction={prediction}
+      />
+
       <MaintenanceBox machineData={machineData} prediction={prediction} />
     </div>
   );

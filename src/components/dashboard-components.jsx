@@ -1,4 +1,4 @@
-// components/dashboard-components.jsx
+import React from "react";
 import {
   LineChart,
   Line,
@@ -9,6 +9,10 @@ import {
   ResponsiveContainer,
   Area,
   AreaChart,
+  ReferenceLine,
+  ScatterChart,
+  Scatter,
+  CartesianGrid,
 } from "recharts";
 
 // ============================================
@@ -17,11 +21,9 @@ import {
 export const LiveIndicator = ({ isStreaming, lastUpdate }) => {
   return (
     <div className="live-indicator-container">
-      <div className={`live-badge ${isStreaming ? 'streaming' : 'disconnected'}`}>
+      <div className={`live-badge ${isStreaming ? "streaming" : "disconnected"}`}>
         <span className="live-dot"></span>
-        <span className="live-text">
-          {isStreaming ? 'Live' : 'Disconnected'}
-        </span>
+        <span className="live-text">{isStreaming ? "Live" : "Disconnected"}</span>
       </div>
       <span className="last-update">
         Last updated: {lastUpdate.toLocaleTimeString()}
@@ -33,19 +35,16 @@ export const LiveIndicator = ({ isStreaming, lastUpdate }) => {
 // ============================================
 // CONTROL PANEL
 // ============================================
-// components/dashboard-components/ControlPanel.jsx
-import React from "react";
-
-export const ControlPanel = ({ 
-  isPaused, 
-  timeWindow, 
-  onPauseResume, 
-  onReset, 
+export const ControlPanel = ({
+  isPaused,
+  timeWindow,
+  onPauseResume,
+  onReset,
   onTimeWindowChange,
   dataSource = "live",
   onLoadHistory,
   onSwitchToLive,
-  historyLoading = false
+  historyLoading = false,
 }) => {
   const timeWindowOptions = [
     { label: "50 pts", value: 50 },
@@ -57,7 +56,6 @@ export const ControlPanel = ({
 
   return (
     <div className="control-panel">
-      {/* Data Source Toggle */}
       <div className="control-group">
         <label>Data Source:</label>
         <div className="data-source-buttons">
@@ -73,12 +71,15 @@ export const ControlPanel = ({
             onClick={onLoadHistory}
             disabled={historyLoading || dataSource === "history"}
           >
-            {historyLoading ? "Loading..." : dataSource === "history" ? "● History" : "Load History"}
+            {historyLoading
+              ? "Loading..."
+              : dataSource === "history"
+              ? "● History"
+              : "Load History"}
           </button>
         </div>
       </div>
 
-      {/* Time Window Selection */}
       <div className="control-group">
         <label>Time Window:</label>
         <div className="time-window-buttons">
@@ -94,7 +95,6 @@ export const ControlPanel = ({
         </div>
       </div>
 
-      {/* Stream Controls (only show in live mode) */}
       {dataSource === "live" && (
         <div className="control-group">
           <label>Stream Control:</label>
@@ -109,7 +109,6 @@ export const ControlPanel = ({
         </div>
       )}
 
-      {/* Info Text */}
       <div className="control-info">
         {dataSource === "live" ? (
           <span className="info-text">
@@ -131,11 +130,15 @@ export const ControlPanel = ({
 export const SystemStatusCard = ({ data, newFault }) => {
   if (!data) return null;
 
-  const statusClass = data.overallStatus === 'Normal' ? 'normal' : 
-                      data.overallStatus === 'Warning' ? 'warning' : 'critical';
+  const statusClass =
+    data.overallStatus === "Normal"
+      ? "normal"
+      : data.overallStatus === "Warning"
+      ? "warning"
+      : "critical";
 
   return (
-    <div className={`system-status-card ${statusClass} ${newFault ? 'flash-alert' : ''}`}>
+    <div className={`system-status-card ${statusClass} ${newFault ? "flash-alert" : ""}`}>
       <div className="card-header">
         <h3>System Status</h3>
         <div className={`status-badge ${statusClass}`}>
@@ -143,7 +146,7 @@ export const SystemStatusCard = ({ data, newFault }) => {
           <span>{data.overallStatus}</span>
         </div>
       </div>
-      
+
       <div className="card-content">
         <div className="status-item">
           <span className="label">Active Fault:</span>
@@ -155,7 +158,9 @@ export const SystemStatusCard = ({ data, newFault }) => {
         </div>
         <div className="status-item">
           <span className="label">Last Inspection:</span>
-          <span className="value">{new Date(data.lastInspection || Date.now()).toLocaleDateString()}</span>
+          <span className="value">
+            {new Date(data.lastInspection || Date.now()).toLocaleDateString()}
+          </span>
         </div>
       </div>
     </div>
@@ -168,20 +173,25 @@ export const SystemStatusCard = ({ data, newFault }) => {
 export const PredictionPanel = ({ prediction }) => {
   if (!prediction) return null;
 
-  const getSeverity = (confidence) => {
-    if (confidence > 0.9) return 'high';
-    if (confidence > 0.7) return 'medium';
-    return 'low';
-  };
+  const severity =
+    prediction.severity ||
+    (prediction.prediction === "faulty"
+      ? prediction.confidence > 0.9
+        ? "high"
+        : prediction.confidence > 0.7
+        ? "medium"
+        : "low"
+      : "normal");
 
-  const severity = prediction.prediction === 'faulty' 
-    ? getSeverity(prediction.confidence)
-    : 'normal';
+  const hasF1 =
+    prediction.f1Normal !== null ||
+    prediction.f1Fault !== null ||
+    prediction.f1Macro !== null;
 
   return (
     <div className={`prediction-panel severity-${severity}`}>
       <div className="card-header">
-        <h3>AI Prediction</h3>
+        <h3>Model Prediction</h3>
         <span className="prediction-timestamp">
           {new Date(prediction.timestamp).toLocaleTimeString()}
         </span>
@@ -190,20 +200,71 @@ export const PredictionPanel = ({ prediction }) => {
       <div className="prediction-content">
         <div className="prediction-main">
           <div className={`prediction-icon ${prediction.prediction}`}>
-            {prediction.prediction === 'faulty' ? '⚠️' : '✓'}
+            {prediction.prediction === "faulty" ? "⚠️" : "✓"}
           </div>
           <div className="prediction-text">
             <span className="prediction-label">Status</span>
             <span className={`prediction-status ${prediction.prediction}`}>
-              {prediction.prediction === 'faulty' ? 'Fault Detected' : 'Normal Operation'}
+              {prediction.prediction === "faulty" ? "Fault Detected" : "Normal Operation"}
             </span>
           </div>
         </div>
 
-        {prediction.faultType && prediction.faultType !== 'None' && (
+        <div className="status-item prediction-detail">
+          <span className="label">Backend Status:</span>
+          <span className="value">{prediction.finalStatus || "Unknown"}</span>
+        </div>
+
+        {prediction.faultType && prediction.faultType !== "None" && (
           <div className="fault-type-box">
             <span className="fault-label">Fault Type:</span>
             <span className="fault-value">{prediction.faultType}</span>
+          </div>
+        )}
+
+        {prediction.healthScore !== null && prediction.healthScore !== undefined && (
+          <div className="status-item prediction-detail">
+            <span className="label">Health Score:</span>
+            <span className="value">{prediction.healthScore.toFixed(1)}%</span>
+          </div>
+        )}
+
+        {prediction.latestError !== undefined && prediction.threshold !== undefined && (
+          <div className="status-item prediction-detail">
+            <span className="label">Error / Threshold:</span>
+            <span className="value">
+              {Number(prediction.latestError).toFixed(3)} / {Number(prediction.threshold).toFixed(3)}
+            </span>
+          </div>
+        )}
+
+        {prediction.latestDegradation !== null && prediction.latestDegradation !== undefined && (
+          <div className="status-item prediction-detail">
+            <span className="label">Smoothed Degradation:</span>
+            <span className="value">{Number(prediction.latestDegradation).toFixed(3)}</span>
+          </div>
+        )}
+
+        {hasF1 && (
+          <div className="prediction-timing-box">
+            <div className="detail-row">
+              <span>F1 Normal:</span>
+              <span>
+                {prediction.f1Normal !== null ? Number(prediction.f1Normal).toFixed(3) : "N/A"}
+              </span>
+            </div>
+            <div className="detail-row">
+              <span>F1 Fault:</span>
+              <span>
+                {prediction.f1Fault !== null ? Number(prediction.f1Fault).toFixed(3) : "N/A"}
+              </span>
+            </div>
+            <div className="detail-row">
+              <span>F1 Macro:</span>
+              <span>
+                {prediction.f1Macro !== null ? Number(prediction.f1Macro).toFixed(3) : "N/A"}
+              </span>
+            </div>
           </div>
         )}
 
@@ -215,14 +276,31 @@ export const PredictionPanel = ({ prediction }) => {
             </span>
           </div>
           <div className="confidence-bar-bg">
-            <div 
+            <div
               className={`confidence-bar ${severity}`}
               style={{ width: `${(prediction.confidence * 100).toFixed(0)}%` }}
             />
           </div>
         </div>
 
-        {prediction.prediction === 'faulty' && (
+        {(prediction.t1_timestamp || prediction.t2_timestamp) && (
+          <div className="prediction-timing-box">
+            {prediction.t1_timestamp && (
+              <div className="detail-row">
+                <span>First anomaly:</span>
+                <span>{prediction.t1_timestamp}</span>
+              </div>
+            )}
+            {prediction.t2_timestamp && (
+              <div className="detail-row">
+                <span>Confirmed fault:</span>
+                <span>{prediction.t2_timestamp}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {prediction.prediction === "faulty" && (
           <div className={`severity-indicator severity-${severity}`}>
             <span>Severity: {severity.toUpperCase()}</span>
           </div>
@@ -239,102 +317,108 @@ export const MachineHealthCard = ({ machine }) => {
   if (!machine) return null;
 
   const getThresholdStatus = (value, type) => {
-    if (type === 'vibration') {
-      if (value > 0.7) return { status: 'critical', label: 'Critical' };
-      if (value > 0.5) return { status: 'warning', label: 'Warning' };
-      return { status: 'normal', label: 'Normal' };
+    if (type === "vibration") {
+      if (value > 0.7) return { status: "critical", label: "Critical" };
+      if (value > 0.5) return { status: "warning", label: "Warning" };
+      return { status: "normal", label: "Normal" };
     }
-    if (type === 'temperature') {
-      if (value > 75) return { status: 'critical', label: 'Critical' };
-      if (value > 65) return { status: 'warning', label: 'Warning' };
-      return { status: 'normal', label: 'Normal' };
+    if (type === "temperature") {
+      if (value > 75) return { status: "critical", label: "Critical" };
+      if (value > 65) return { status: "warning", label: "Warning" };
+      return { status: "normal", label: "Normal" };
     }
-    if (type === 'current') {
-      if (value > 12) return { status: 'critical', label: 'Critical' };
-      if (value > 10) return { status: 'warning', label: 'Warning' };
-      return { status: 'normal', label: 'Normal' };
+    if (type === "current") {
+      if (value > 12) return { status: "critical", label: "Critical" };
+      if (value > 10) return { status: "warning", label: "Warning" };
+      return { status: "normal", label: "Normal" };
     }
-    return { status: 'normal', label: 'Normal' };
+    return { status: "normal", label: "Normal" };
   };
 
-  const vibStatus = getThresholdStatus(machine.vibrationRMS, 'vibration');
-  const tempStatus = getThresholdStatus(machine.temperature, 'temperature');
-  const currStatus = getThresholdStatus(machine.current, 'current');
+  const vibStatus = getThresholdStatus(machine.vibrationRMS || 0, "vibration");
+  const tempStatus = getThresholdStatus(machine.temperature || 0, "temperature");
+  const currStatus = getThresholdStatus(machine.current || 0, "current");
 
   return (
     <div className="machine-health-card">
       <div className="card-header">
         <h3>Machine Health Metrics</h3>
-        <div className={`overall-health ${machine.status?.toLowerCase() || 'normal'}`}>
+        <div className={`overall-health ${machine.status?.toLowerCase() || "normal"}`}>
           <span className="health-dot"></span>
-          <span>{machine.status || 'Normal'}</span>
+          <span>{machine.status || "Normal"}</span>
         </div>
       </div>
 
       <div className="metrics-grid">
-        {/* Ambient Temperature */}
         <div className="metric-card">
           <div className="metric-icon temperature">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
-              <path d="M12 6V12L16 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+              <path d="M12 6V12L16 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
           </div>
           <div className="metric-info">
             <span className="metric-label">Ambient Temperature</span>
             <span className={`metric-value ${tempStatus.status}`}>
-              {machine.temperature?.toFixed(1) || '0.0'}°C
+              {machine.temperature?.toFixed(1) || "0.0"}°C
             </span>
             <span className={`metric-status ${tempStatus.status}`}>{tempStatus.label}</span>
           </div>
           <div className="metric-progress">
-            <div 
+            <div
               className={`progress-bar ${tempStatus.status}`}
-              style={{ width: `${Math.min((machine.temperature / 100) * 100, 100)}%` }}
+              style={{ width: `${Math.min(((machine.temperature || 0) / 100) * 100, 100)}%` }}
             />
           </div>
         </div>
 
-        {/* Ambient Humidity (Using Vibration as proxy) */}
         <div className="metric-card">
           <div className="metric-icon humidity">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
-              <path d="M12 2.69L17.66 8.35C20.78 11.47 20.78 16.53 17.66 19.65C14.54 22.77 9.46 22.77 6.34 19.65C3.22 16.53 3.22 11.47 6.34 8.35L12 2.69Z" stroke="currentColor" strokeWidth="2"/>
+              <path
+                d="M12 2.69L17.66 8.35C20.78 11.47 20.78 16.53 17.66 19.65C14.54 22.77 9.46 22.77 6.34 19.65C3.22 16.53 3.22 11.47 6.34 8.35L12 2.69Z"
+                stroke="currentColor"
+                strokeWidth="2"
+              />
             </svg>
           </div>
           <div className="metric-info">
             <span className="metric-label">Vibration RMS</span>
             <span className={`metric-value ${vibStatus.status}`}>
-              {machine.vibrationRMS?.toFixed(3) || '0.000'} g
+              {machine.vibrationRMS?.toFixed(3) || "0.000"} g
             </span>
             <span className={`metric-status ${vibStatus.status}`}>{vibStatus.label}</span>
           </div>
           <div className="metric-progress">
-            <div 
+            <div
               className={`progress-bar ${vibStatus.status}`}
-              style={{ width: `${Math.min((machine.vibrationRMS / 1) * 100, 100)}%` }}
+              style={{ width: `${Math.min(((machine.vibrationRMS || 0) / 1) * 100, 100)}%` }}
             />
           </div>
         </div>
 
-        {/* Current */}
         <div className="metric-card">
           <div className="metric-icon current">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
-              <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/>
+              <path
+                d="M13 2L3 14H12L11 22L21 10H12L13 2Z"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinejoin="round"
+              />
             </svg>
           </div>
           <div className="metric-info">
             <span className="metric-label">Current Draw</span>
             <span className={`metric-value ${currStatus.status}`}>
-              {machine.current?.toFixed(1) || '0.0'} A
+              {machine.current?.toFixed(1) || "0.0"} A
             </span>
             <span className={`metric-status ${currStatus.status}`}>{currStatus.label}</span>
           </div>
           <div className="metric-progress">
-            <div 
+            <div
               className={`progress-bar ${currStatus.status}`}
-              style={{ width: `${Math.min((machine.current / 15) * 100, 100)}%` }}
+              style={{ width: `${Math.min(((machine.current || 0) / 15) * 100, 100)}%` }}
             />
           </div>
         </div>
@@ -344,19 +428,60 @@ export const MachineHealthCard = ({ machine }) => {
 };
 
 // ============================================
-// STATISTICS PANEL
+// DATA READINESS CARD
 // ============================================
-export const StatsPanel = ({ vibrationData, temperatureData, currentData, machineData }) => {
+export const DataReadinessCard = ({ validationData }) => {
+  if (!validationData) return null;
+
+  const ready =
+    validationData.enough_for_windows && validationData.enough_for_sequences;
+
+  return (
+    <div className={`data-readiness-card ${ready ? "normal" : "warning"}`}>
+      <div className="card-header">
+        <h3>Inference Data Readiness</h3>
+        <div className={`status-badge ${ready ? "normal" : "warning"}`}>
+          <span className="status-dot"></span>
+          <span>{ready ? "Ready" : "Limited"}</span>
+        </div>
+      </div>
+
+      <div className="readiness-grid">
+        <div className="status-item">
+          <span className="label">Rows in processed.csv</span>
+          <span className="value">{validationData.rows}</span>
+        </div>
+        <div className="status-item">
+          <span className="label">Windows Created</span>
+          <span className="value">{validationData.num_windows}</span>
+        </div>
+        <div className="status-item">
+          <span className="label">Window Size</span>
+          <span className="value">{validationData.window_size}</span>
+        </div>
+        <div className="status-item">
+          <span className="label">Sequence Length</span>
+          <span className="value">{validationData.seq_len}</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============================================
+// STATS PANEL
+// ============================================
+export const StatsPanel = ({ vibrationData, temperatureData, currentData }) => {
   const calculateStats = (data) => {
     if (!data || data.length === 0) return { avg: 0, max: 0, min: 0 };
-    
-    const values = data.map(d => parseFloat(d.value)).filter(v => !isNaN(v));
+
+    const values = data.map((d) => parseFloat(d.value)).filter((v) => !isNaN(v));
     if (values.length === 0) return { avg: 0, max: 0, min: 0 };
-    
+
     const avg = values.reduce((a, b) => a + b, 0) / values.length;
     const max = Math.max(...values);
     const min = Math.min(...values);
-    
+
     return { avg, max, min };
   };
 
@@ -367,7 +492,7 @@ export const StatsPanel = ({ vibrationData, temperatureData, currentData, machin
   return (
     <div className="stats-panel">
       <h3>Rolling Statistics (Time Window)</h3>
-      
+
       <div className="stats-grid">
         <div className="stat-box">
           <div className="stat-header">
@@ -443,9 +568,8 @@ export const TelemetryCharts = ({ vibrationData, temperatureData, currentData })
   return (
     <div className="telemetry-section">
       <h3>Live Sensor Telemetry</h3>
-      
+
       <div className="charts-grid">
-        {/* Vibration Chart */}
         <div className="chart-card">
           <div className="chart-header">
             <h4>Vibration Levels</h4>
@@ -455,38 +579,24 @@ export const TelemetryCharts = ({ vibrationData, temperatureData, currentData })
             <AreaChart data={vibrationData}>
               <defs>
                 <linearGradient id="vibrationGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3498db" stopOpacity={0.8}/>
-                  <stop offset="95%" stopColor="#3498db" stopOpacity={0.1}/>
+                  <stop offset="5%" stopColor="#3498db" stopOpacity={0.8} />
+                  <stop offset="95%" stopColor="#3498db" stopOpacity={0.1} />
                 </linearGradient>
               </defs>
-              <XAxis 
-                dataKey="time" 
-                tick={{ fontSize: 11, fill: '#7f8c8d' }}
-                interval="preserveStartEnd"
-              />
-              <YAxis 
-                tick={{ fontSize: 11, fill: '#7f8c8d' }}
-                domain={[0, 'auto']}
-              />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: '#fff', 
-                  border: '1px solid #ddd',
-                  borderRadius: '8px'
+              <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#7f8c8d" }} interval="preserveStartEnd" />
+              <YAxis tick={{ fontSize: 11, fill: "#7f8c8d" }} domain={[0, "auto"]} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "#fff",
+                  border: "1px solid #ddd",
+                  borderRadius: "8px",
                 }}
               />
-              <Area
-                type="monotone"
-                dataKey="value"
-                stroke="#3498db"
-                strokeWidth={2}
-                fill="url(#vibrationGradient)"
-              />
+              <Area type="monotone" dataKey="value" stroke="#3498db" strokeWidth={2} fill="url(#vibrationGradient)" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Temperature Chart */}
         <div className="chart-card">
           <div className="chart-header">
             <h4>Temperature</h4>
@@ -496,38 +606,24 @@ export const TelemetryCharts = ({ vibrationData, temperatureData, currentData })
             <AreaChart data={temperatureData}>
               <defs>
                 <linearGradient id="temperatureGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#16a085" stopOpacity={0.8}/>
-                  <stop offset="95%" stopColor="#16a085" stopOpacity={0.1}/>
+                  <stop offset="5%" stopColor="#16a085" stopOpacity={0.8} />
+                  <stop offset="95%" stopColor="#16a085" stopOpacity={0.1} />
                 </linearGradient>
               </defs>
-              <XAxis 
-                dataKey="time" 
-                tick={{ fontSize: 11, fill: '#7f8c8d' }}
-                interval="preserveStartEnd"
-              />
-              <YAxis 
-                tick={{ fontSize: 11, fill: '#7f8c8d' }}
-                domain={[0, 'auto']}
-              />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: '#fff', 
-                  border: '1px solid #ddd',
-                  borderRadius: '8px'
+              <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#7f8c8d" }} interval="preserveStartEnd" />
+              <YAxis tick={{ fontSize: 11, fill: "#7f8c8d" }} domain={[0, "auto"]} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "#fff",
+                  border: "1px solid #ddd",
+                  borderRadius: "8px",
                 }}
               />
-              <Area
-                type="monotone"
-                dataKey="value"
-                stroke="#16a085"
-                strokeWidth={2}
-                fill="url(#temperatureGradient)"
-              />
+              <Area type="monotone" dataKey="value" stroke="#16a085" strokeWidth={2} fill="url(#temperatureGradient)" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Current Chart */}
         <div className="chart-card">
           <div className="chart-header">
             <h4>Current Draw</h4>
@@ -537,32 +633,160 @@ export const TelemetryCharts = ({ vibrationData, temperatureData, currentData })
             <AreaChart data={currentData}>
               <defs>
                 <linearGradient id="currentGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#f39c12" stopOpacity={0.8}/>
-                  <stop offset="95%" stopColor="#f39c12" stopOpacity={0.1}/>
+                  <stop offset="5%" stopColor="#f39c12" stopOpacity={0.8} />
+                  <stop offset="95%" stopColor="#f39c12" stopOpacity={0.1} />
                 </linearGradient>
               </defs>
-              <XAxis 
-                dataKey="time" 
-                tick={{ fontSize: 11, fill: '#7f8c8d' }}
-                interval="preserveStartEnd"
-              />
-              <YAxis 
-                tick={{ fontSize: 11, fill: '#7f8c8d' }}
-                domain={[0, 'auto']}
-              />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: '#fff', 
-                  border: '1px solid #ddd',
-                  borderRadius: '8px'
+              <XAxis dataKey="time" tick={{ fontSize: 11, fill: "#7f8c8d" }} interval="preserveStartEnd" />
+              <YAxis tick={{ fontSize: 11, fill: "#7f8c8d" }} domain={[0, "auto"]} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "#fff",
+                  border: "1px solid #ddd",
+                  borderRadius: "8px",
                 }}
               />
+              <Area type="monotone" dataKey="value" stroke="#f39c12" strokeWidth={2} fill="url(#currentGradient)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============================================
+// DEGRADATION CHARTS
+// ============================================
+export const DegradationCharts = ({ degradationData, prediction }) => {
+  if (!degradationData || degradationData.length === 0) return null;
+
+  const anomalyPoints = degradationData.filter((d) => d.anomaly === 1);
+  const firstPoint =
+    prediction?.t1 !== null && prediction?.t1 !== undefined
+      ? degradationData[prediction.t1]
+      : null;
+  const confirmedPoint =
+    prediction?.t2 !== null && prediction?.t2 !== undefined
+      ? degradationData[prediction.t2]
+      : null;
+
+  return (
+    <div className="telemetry-section">
+      <h3>AE Degradation and Fault Detection</h3>
+
+      <div className="charts-grid">
+        <div className="chart-card anomaly-card-span">
+          <div className="chart-header">
+            <h4>Reconstruction Error with Detection Markers</h4>
+            <span className="chart-unit">MAE vs sample index</span>
+          </div>
+
+          <ResponsiveContainer width="100%" height={360}>
+            <LineChart data={degradationData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="x" tick={{ fontSize: 11, fill: "#7f8c8d" }} />
+              <YAxis tick={{ fontSize: 11, fill: "#7f8c8d" }} />
+              <Tooltip />
+              <Legend />
+
+              <Line
+                type="monotone"
+                dataKey="error"
+                stroke="#2563eb"
+                dot={false}
+                strokeWidth={2}
+                name="Reconstruction Error"
+              />
+
+              <Line
+                type="monotone"
+                dataKey="threshold"
+                stroke="#ef4444"
+                dot={false}
+                strokeWidth={2}
+                strokeDasharray="8 4"
+                name="Threshold"
+              />
+
+              <Scatter
+                name="Anomaly Windows"
+                data={anomalyPoints}
+                fill="#f97316"
+              />
+
+              {firstPoint && (
+                <ReferenceLine
+                  x={firstPoint.x}
+                  stroke="#f59e0b"
+                  strokeDasharray="6 4"
+                  label="First Detection"
+                />
+              )}
+
+              {confirmedPoint && (
+                <ReferenceLine
+                  x={confirmedPoint.x}
+                  stroke="#dc2626"
+                  label="Confirmed Fault"
+                />
+              )}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="chart-card">
+          <div className="chart-header">
+            <h4>Smoothed Degradation Trend</h4>
+            <span className="chart-unit">Rolling error trend</span>
+          </div>
+
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={degradationData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="x" tick={{ fontSize: 11, fill: "#7f8c8d" }} />
+              <YAxis tick={{ fontSize: 11, fill: "#7f8c8d" }} />
+              <Tooltip />
+              <Legend />
+              <Line
+                type="monotone"
+                dataKey="smoothError"
+                stroke="#10b981"
+                dot={false}
+                strokeWidth={2}
+                name="Smoothed Error"
+              />
+              <Line
+                type="monotone"
+                dataKey="threshold"
+                stroke="#ef4444"
+                dot={false}
+                strokeDasharray="8 4"
+                name="Threshold"
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="chart-card">
+          <div className="chart-header">
+            <h4>Health Score Trend</h4>
+            <span className="chart-unit">%</span>
+          </div>
+
+          <ResponsiveContainer width="100%" height={300}>
+            <AreaChart data={degradationData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="x" tick={{ fontSize: 11, fill: "#7f8c8d" }} />
+              <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#7f8c8d" }} />
+              <Tooltip />
               <Area
                 type="monotone"
-                dataKey="value"
-                stroke="#f39c12"
+                dataKey="healthScore"
+                stroke="#10b981"
+                fillOpacity={0.25}
+                fill="#10b981"
                 strokeWidth={2}
-                fill="url(#currentGradient)"
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -578,9 +802,26 @@ export const TelemetryCharts = ({ vibrationData, temperatureData, currentData })
 export const MaintenanceBox = ({ machineData, prediction }) => {
   if (!prediction || !machineData) return null;
 
-  const isFaulty = prediction.prediction === 'faulty';
+  const isFaulty = prediction.prediction === "faulty";
+  const isInsufficient = prediction.finalStatus === "Insufficient Data";
+  const isNormal = prediction.finalStatus === "Normal";
 
-  if (!isFaulty && machineData.status === 'Normal') {
+  if (isInsufficient) {
+    return (
+      <div className="maintenance-box warning">
+        <div className="maintenance-icon">ℹ️</div>
+        <div className="maintenance-content">
+          <h3>Maintenance Status</h3>
+          <p>Model inference is limited because the current cloud data window is too short.</p>
+          <div className="maintenance-detail">
+            <span>Recommended Action: Collect more sensor samples before final fault assessment.</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isFaulty && isNormal) {
     return (
       <div className="maintenance-box normal">
         <div className="maintenance-icon">✓</div>
@@ -588,7 +829,10 @@ export const MaintenanceBox = ({ machineData, prediction }) => {
           <h3>Maintenance Status</h3>
           <p>Machine operating normally. No immediate maintenance required.</p>
           <div className="maintenance-detail">
-            <span>Next scheduled maintenance: {new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString()}</span>
+            <span>
+              Next scheduled maintenance:{" "}
+              {new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString()}
+            </span>
           </div>
         </div>
       </div>
@@ -602,7 +846,7 @@ export const MaintenanceBox = ({ machineData, prediction }) => {
         <h3>Maintenance Recommendation</h3>
         <div className="maintenance-item">
           <p>
-            Machine shows signs of <strong>{prediction.faultType || 'fault'}</strong>.
+            Machine shows signs of <strong>{prediction.faultType || "fault"}</strong>.
           </p>
           <p className="recommendation">
             Recommended Action: Schedule inspection within 24-48 hours.
@@ -610,7 +854,15 @@ export const MaintenanceBox = ({ machineData, prediction }) => {
           <div className="maintenance-details">
             <div className="detail-row">
               <span>Severity:</span>
-              <span className="severity-badge">{prediction.confidence > 0.9 ? 'HIGH' : prediction.confidence > 0.7 ? 'MEDIUM' : 'LOW'}</span>
+              <span className="severity-badge">
+                {prediction.severity
+                  ? prediction.severity.toUpperCase()
+                  : prediction.confidence > 0.9
+                  ? "HIGH"
+                  : prediction.confidence > 0.7
+                  ? "MEDIUM"
+                  : "LOW"}
+              </span>
             </div>
             <div className="detail-row">
               <span>Confidence:</span>
