@@ -160,7 +160,7 @@ const mapInferenceToPrediction = (inf) => {
 const mapInferenceToDegradationData = (inf) => {
   const errors = Array.isArray(inf?.errors) ? inf.errors : [];
   const preds = Array.isArray(inf?.predictions) ? inf.predictions : [];
-  const timeAxis = Array.isArray(inf?.time_axis) ? inf.time_axis : [];
+  const windowTimestamps = Array.isArray(inf?.window_timestamps)? inf.window_timestamps : [];
   const threshold = safeNum(inf?.threshold, 0);
   const smooth = Array.isArray(inf?.degradation_curve) ? inf.degradation_curve : [];
 
@@ -170,7 +170,7 @@ const mapInferenceToDegradationData = (inf) => {
 
     return {
       index,
-      x: timeAxis[index] ?? index,
+      x: windowTimestamps[index] ?? index,
       error: safeNum(err, 0),
       threshold,
       anomaly: preds[index] === 1 ? 1 : 0,
@@ -350,7 +350,7 @@ export const getTelemetryHistory = async () => {
   }
 };
 
-export const connectToLiveStream = (onData, onError, intervalMs = 2000) => {
+export const connectToLiveStream = (onData, onError, intervalMs = 10000) => {
   const interval = setInterval(async () => {
     try {
       const telemetry = await getMachineTelemetry();

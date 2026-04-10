@@ -679,7 +679,7 @@ export const DegradationCharts = ({ degradationData, prediction }) => {
         <div className="chart-card anomaly-card-span">
           <div className="chart-header">
             <h4>Reconstruction Error with Detection Markers</h4>
-            <span className="chart-unit">MAE vs sample index</span>
+            <span className="chart-unit">MAE vs time</span>
           </div>
 
           <ResponsiveContainer width="100%" height={360}>
@@ -720,7 +720,7 @@ export const DegradationCharts = ({ degradationData, prediction }) => {
                   x={firstPoint.x}
                   stroke="#f59e0b"
                   strokeDasharray="6 4"
-                  label="First Detection"
+                  label={`First: ${prediction?.t1_timestamp || "N/A"}`}
                 />
               )}
 
@@ -728,7 +728,7 @@ export const DegradationCharts = ({ degradationData, prediction }) => {
                 <ReferenceLine
                   x={confirmedPoint.x}
                   stroke="#dc2626"
-                  label="Confirmed Fault"
+                  label={`Confirmed: ${prediction?.t2_timestamp || "N/A"}`}
                 />
               )}
             </LineChart>

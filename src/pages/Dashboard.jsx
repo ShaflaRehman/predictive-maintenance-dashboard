@@ -12,12 +12,13 @@ import {
 } from "../components/dashboard-components";
 import { Loading } from "../components/Loading";
 import {
-  getSystemStatus,
   getMachineTelemetry,
-  getPredictions,
-  getDegradationData,
   connectToLiveStream,
   getTelemetryHistory,
+  getFullInference,
+  mapInferenceToSystemStatus,
+  mapInferenceToPrediction,
+  mapInferenceToDegradationData,
 } from "../services/api";
 import "../styles/dashboard.css";
 
@@ -43,12 +44,14 @@ const Dashboard = () => {
     const fetchInitialData = async () => {
       setLoading(true);
       try {
-        const [system, telemetry, pred, degradation] = await Promise.all([
-          getSystemStatus(),
+        const [telemetry, inference] = await Promise.all([
           getMachineTelemetry(),
-          getPredictions(),
-          getDegradationData(),
+          getFullInference(),
         ]);
+
+        const system = mapInferenceToSystemStatus(inference);
+        const pred = mapInferenceToPrediction(inference);
+        const degradation = mapInferenceToDegradationData(inference);
 
         setSystemData(system);
         setPrediction(pred);
@@ -63,7 +66,7 @@ const Dashboard = () => {
         setTemperatureData([{ time: telemetry.timestamp, value: telemetry.temperature }]);
         setCurrentData([{ time: telemetry.timestamp, value: telemetry.current }]);
 
-        setDegradationData(degradation?.series || []);
+        setDegradationData(degradation);
 
         setError(null);
         setIsStreaming(true);
@@ -129,11 +132,11 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchPredictionAndDegradation = async () => {
       try {
-        const [system, pred, degradation] = await Promise.all([
-          getSystemStatus(),
-          getPredictions(),
-          getDegradationData(),
-        ]);
+        const inference = await getFullInference();
+
+        const system = mapInferenceToSystemStatus(inference);
+        const pred = mapInferenceToPrediction(inference);
+        const degradation = mapInferenceToDegradationData(inference);
 
         if (pred.prediction === "faulty" && prediction?.prediction !== "faulty") {
           setNewFaultDetected(true);
@@ -142,14 +145,14 @@ const Dashboard = () => {
 
         setSystemData(system);
         setPrediction(pred);
-        setDegradationData(degradation?.series || []);
+        setDegradationData(degradation);
       } catch (err) {
         console.error("Error fetching prediction/degradation:", err);
       }
     };
 
     fetchPredictionAndDegradation();
-    const interval = setInterval(fetchPredictionAndDegradation, 2000);
+    const interval = setInterval(fetchPredictionAndDegradation, 5000);
 
     return () => clearInterval(interval);
   }, [prediction?.prediction]);
@@ -210,7 +213,8 @@ const Dashboard = () => {
     if (dataSource === "history") {
       loadHistoryData();
     }
-  }, [timeWindow]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeWindow]);
 
   const handlePauseResume = () => setIsPaused(!isPaused);
 
@@ -294,3 +298,4 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+s
