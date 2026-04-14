@@ -9,13 +9,11 @@ import {
 // ==============================
 // ENDPOINTS
 // ==============================
-// Keep these exactly for telemetry graphs/cards
 const TELEMETRY_URL =
   "https://pm-api-demo-d8gmgvfvanc2e5ft.southeastasia-01.azurewebsites.net/api/getTelemetry";
 const TELEMETRY_HISTORY_URL =
   "https://pm-api-demo-d8gmgvfvanc2e5ft.southeastasia-01.azurewebsites.net/api/getTelemetryHistory";
 
-// Your Docker / FastAPI inference API
 const INFERENCE_BASE_URL =
   import.meta.env.VITE_INFERENCE_API_URL || "http://localhost:8000";
 
@@ -33,13 +31,45 @@ const safeNum = (v, fallback = 0) => {
   return Number.isFinite(n) ? n : fallback;
 };
 
+const rms3 = (ax, ay, az) =>
+  Math.sqrt(safeNum(ax) ** 2 + safeNum(ay) ** 2 + safeNum(az) ** 2);
+
+const getRowTemperature = (row) => {
+  if (
+    row?.temperature !== undefined &&
+    row?.temperature !== null &&
+    row?.temperature !== ""
+  ) {
+    return safeNum(row.temperature);
+  }
+  return safeNum(row?.temp);
+};
+
+const healthScoreFromInference = (inf) => {
+  if (
+    typeof inf?.latest_error === "number" &&
+    typeof inf?.threshold === "number" &&
+    inf.threshold > 0
+  ) {
+    return Math.max(0, +(100 * (1 - inf.latest_error / inf.threshold)).toFixed(2));
+  }
+
+  if (typeof inf?.health_score === "number") {
+    return inf.health_score;
+  }
+
+  return null;
+};
+
 const severityFromInference = (inf) => {
   if (!inf) return "normal";
+
   if (inf.final_status === "Fault") {
     if ((inf.latest_error ?? 0) > (inf.threshold ?? 0) * 1.5) return "high";
     if ((inf.latest_error ?? 0) > (inf.threshold ?? 0) * 1.15) return "medium";
     return "low";
   }
+
   if (inf.t1 !== null && inf.t1 !== undefined) return "medium";
   return "normal";
 };
@@ -53,26 +83,28 @@ const statusFromInference = (inf) => {
 };
 
 const confidenceFromInference = (inf) => {
-  if (!inf) return 0.5;
+  const health = healthScoreFromInference(inf);
 
-  if (typeof inf.health_score === "number") {
-    if (inf.final_status === "Fault") {
-      return Math.min(0.99, Math.max(0.75, 1 - inf.health_score / 100));
+  if (health !== null) {
+    if (inf?.final_status === "Fault") {
+      return Math.min(0.99, Math.max(0.75, 1 - health / 100));
     }
-    return Math.min(0.99, Math.max(0.7, inf.health_score / 100));
+    return Math.min(0.99, Math.max(0.7, health / 100));
   }
 
   if (
-    typeof inf.latest_error === "number" &&
-    typeof inf.threshold === "number" &&
+    typeof inf?.latest_error === "number" &&
+    typeof inf?.threshold === "number" &&
     inf.threshold > 0
   ) {
     const ratio = inf.latest_error / inf.threshold;
-    if (inf.final_status === "Fault") return Math.min(0.99, Math.max(0.75, ratio / 2));
+    if (inf.final_status === "Fault") {
+      return Math.min(0.99, Math.max(0.75, ratio / 2));
+    }
     return Math.max(0.6, 1 - Math.min(ratio, 1) * 0.4);
   }
 
-  return inf.final_status === "Fault" ? 0.9 : 0.85;
+  return inf?.final_status === "Fault" ? 0.9 : 0.85;
 };
 
 const buildMaintenanceMessage = (inf) => {
@@ -110,8 +142,10 @@ const buildMaintenanceMessage = (inf) => {
   };
 };
 
-// Map inference -> SystemStatusCard props
-const mapInferenceToSystemStatus = (inf) => {
+// ==============================
+// MAPPERS
+// ==============================
+export const mapInferenceToSystemStatus = (inf) => {
   const status = statusFromInference(inf);
 
   return {
@@ -124,8 +158,7 @@ const mapInferenceToSystemStatus = (inf) => {
   };
 };
 
-// Map inference -> PredictionPanel props
-const mapInferenceToPrediction = (inf) => {
+export const mapInferenceToPrediction = (inf) => {
   const prediction = inf?.final_status === "Fault" ? "faulty" : "normal";
 
   return {
@@ -143,26 +176,23 @@ const mapInferenceToPrediction = (inf) => {
     t2: inf?.t2 ?? null,
     t1_timestamp: inf?.t1_timestamp ?? null,
     t2_timestamp: inf?.t2_timestamp ?? null,
-    healthScore:
-      typeof inf?.health_score === "number" ? inf.health_score : null,
-
-    // F1 metrics from backend
-    f1Normal:
-      typeof inf?.f1_normal === "number" ? inf.f1_normal : null,
-    f1Fault:
-      typeof inf?.f1_fault === "number" ? inf.f1_fault : null,
-    f1Macro:
-      typeof inf?.f1_macro === "number" ? inf.f1_macro : null,
+    healthScore: healthScoreFromInference(inf),
+    f1Normal: typeof inf?.f1_normal === "number" ? inf.f1_normal : null,
+    f1Fault: typeof inf?.f1_fault === "number" ? inf.f1_fault : null,
+    f1Macro: typeof inf?.f1_macro === "number" ? inf.f1_macro : null,
   };
 };
 
-// Map inference -> degradation charts
-const mapInferenceToDegradationData = (inf) => {
+export const mapInferenceToDegradationData = (inf) => {
   const errors = Array.isArray(inf?.errors) ? inf.errors : [];
   const preds = Array.isArray(inf?.predictions) ? inf.predictions : [];
-  const windowTimestamps = Array.isArray(inf?.window_timestamps)? inf.window_timestamps : [];
+  const windowTimestamps = Array.isArray(inf?.window_timestamps)
+    ? inf.window_timestamps
+    : [];
   const threshold = safeNum(inf?.threshold, 0);
-  const smooth = Array.isArray(inf?.degradation_curve) ? inf.degradation_curve : [];
+  const smooth = Array.isArray(inf?.degradation_curve)
+    ? inf.degradation_curve
+    : [];
 
   return errors.map((err, index) => {
     const healthScore =
@@ -188,14 +218,40 @@ const mapInferenceToDegradationData = (inf) => {
   });
 };
 
+export const mapTelemetryFromInference = (inf) => {
+  const ax = Array.isArray(inf?.ax) ? inf.ax : [];
+  const ay = Array.isArray(inf?.ay) ? inf.ay : [];
+  const az = Array.isArray(inf?.az) ? inf.az : [];
+  const current = Array.isArray(inf?.current) ? inf.current : [];
+  const temp = Array.isArray(inf?.temp) ? inf.temp : [];
+  const ts = Array.isArray(inf?.ts) ? inf.ts : [];
+
+  return ax.map((_, i) => ({
+    index: i,
+    ax: safeNum(ax[i]),
+    ay: safeNum(ay[i]),
+    az: safeNum(az[i]),
+    vibration: +rms3(ax[i], ay[i], az[i]).toFixed(3),
+    current: safeNum(current[i]),
+    temperature: safeNum(temp[i]),
+    temp: safeNum(temp[i]),
+    timestamp: ts[i] || `${i}`,
+    time: ts[i] || `${i}`,
+  }));
+};
+
 // ==============================
 // SYSTEM / INFERENCE
 // ==============================
+export const getFullInference = async () => {
+  const response = await fetch(INFERENCE_PREDICT_URL);
+  if (!response.ok) throw new Error("Failed to fetch inference results");
+  return await response.json();
+};
+
 export const getSystemStatus = async () => {
   try {
-    const response = await fetch(INFERENCE_PREDICT_URL);
-    if (!response.ok) throw new Error("Failed to fetch inference status");
-    const data = await response.json();
+    const data = await getFullInference();
     return mapInferenceToSystemStatus(data);
   } catch (error) {
     console.error("System Status API Error:", error);
@@ -214,14 +270,12 @@ export const getSystemStatus = async () => {
 };
 
 export const getInferenceResults = async () => {
-  const response = await fetch(INFERENCE_PREDICT_URL);
-  if (!response.ok) throw new Error("Failed to fetch inference results");
-  return await response.json();
+  return await getFullInference();
 };
 
 export const getPredictions = async () => {
   try {
-    const data = await getInferenceResults();
+    const data = await getFullInference();
     return mapInferenceToPrediction(data);
   } catch (error) {
     console.error("Prediction API Error:", error);
@@ -249,7 +303,7 @@ export const getPredictions = async () => {
 
 export const getDegradationData = async () => {
   try {
-    const inf = await getInferenceResults();
+    const inf = await getFullInference();
     return {
       raw: inf,
       series: mapInferenceToDegradationData(inf),
@@ -286,7 +340,7 @@ export const getInferenceValidation = async () => {
 };
 
 // ==============================
-// TELEMETRY - KEEP AZURE FUNCTIONS
+// TELEMETRY
 // ==============================
 export const getMachineTelemetry = async () => {
   try {
@@ -294,14 +348,16 @@ export const getMachineTelemetry = async () => {
     if (!response.ok) throw new Error("Failed to fetch telemetry");
     const data = await response.json();
 
-    const vibration = Math.sqrt(
-      safeNum(data.ax) ** 2 + safeNum(data.ay) ** 2 + safeNum(data.az) ** 2
-    );
+    const vibration = rms3(data.ax, data.ay, data.az);
+    const resolvedTemperature =
+      data?.temperature !== undefined && data?.temperature !== null && data?.temperature !== ""
+        ? safeNum(data.temperature)
+        : safeNum(data.temp);
 
     return {
       timestamp: data.ts || new Date().toLocaleTimeString(),
       current: safeNum(data.current),
-      temperature: safeNum(data.temp),
+      temperature: resolvedTemperature,
       vibration: +vibration.toFixed(3),
       raw: data,
     };
@@ -317,27 +373,27 @@ export const getMachineTelemetry = async () => {
   }
 };
 
-export const getTelemetryHistory = async () => {
+export const getTelemetryHistory = async (limit = 500) => {
   try {
-    const response = await fetch(TELEMETRY_HISTORY_URL);
+    const response = await fetch(`${TELEMETRY_HISTORY_URL}?limit=${limit}`);
     if (!response.ok) throw new Error("Failed to fetch telemetry history");
     const data = await response.json();
 
     return data.map((row, index) => {
-      const vibration = Math.sqrt(
-        safeNum(row.ax) ** 2 + safeNum(row.ay) ** 2 + safeNum(row.az) ** 2
-      );
+      const vibration = rms3(row.ax, row.ay, row.az);
 
       const time = row.ts
         ? `${row.ts}`
         : new Date(Date.now() - (data.length - index) * 1000).toLocaleTimeString();
 
+      const resolvedTemperature = getRowTemperature(row);
+
       return {
         timestamp: time,
         time,
         current: safeNum(row.current),
-        temp: safeNum(row.temp),
-        temperature: safeNum(row.temp),
+        temp: resolvedTemperature,
+        temperature: resolvedTemperature,
         vibration: +vibration.toFixed(3),
         ax: safeNum(row.ax),
         ay: safeNum(row.ay),
@@ -348,6 +404,58 @@ export const getTelemetryHistory = async () => {
     console.error("Telemetry History API Error:", error);
     return [];
   }
+};
+
+// Align cloud telemetry to inference window timestamps so x-axis matches degradation chart
+export const getAlignedTelemetryFromCloud = async (windowTimestamps = []) => {
+  const rows = await getTelemetryHistory(500);
+
+  if (!rows.length) return [];
+
+  const needed = Array.isArray(windowTimestamps) ? windowTimestamps.length : 0;
+
+  // Fallback: no inference timestamps available, so show recent cloud telemetry directly
+  if (needed === 0) {
+    return rows.map((row, index) => ({
+      time: row.time ?? row.timestamp ?? `${index}`,
+      timestamp: row.timestamp ?? row.time ?? `${index}`,
+      vibration: safeNum(row.vibration),
+      temperature: safeNum(row.temperature),
+      current: safeNum(row.current),
+      ax: safeNum(row.ax),
+      ay: safeNum(row.ay),
+      az: safeNum(row.az),
+      index,
+    }));
+  }
+
+  const lastRows = rows.slice(-needed);
+
+  return windowTimestamps.map((ts, index) => {
+    const row = lastRows[index] || lastRows[lastRows.length - 1] || {};
+
+    return {
+      time: ts ?? row.time ?? `${index}`,
+      timestamp: ts ?? row.timestamp ?? `${index}`,
+      vibration: safeNum(row.vibration),
+      temperature: safeNum(row.temperature),
+      current: safeNum(row.current),
+      ax: safeNum(row.ax),
+      ay: safeNum(row.ay),
+      az: safeNum(row.az),
+      index,
+    };
+  });
+};
+
+export const getTemperatureHistoryFromCloud = async (limit = 500) => {
+  const rows = await getTelemetryHistory(limit);
+
+  return rows.map((row) => ({
+    time: row.time,
+    value: safeNum(row.temperature),
+    timestamp: row.timestamp,
+  }));
 };
 
 export const connectToLiveStream = (onData, onError, intervalMs = 10000) => {

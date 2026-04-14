@@ -10,7 +10,6 @@ import {
   Area,
   AreaChart,
   ReferenceLine,
-  ScatterChart,
   Scatter,
   CartesianGrid,
 } from "recharts";
@@ -125,52 +124,9 @@ export const ControlPanel = ({
 };
 
 // ============================================
-// SYSTEM STATUS CARD
-// ============================================
-export const SystemStatusCard = ({ data, newFault }) => {
-  if (!data) return null;
-
-  const statusClass =
-    data.overallStatus === "Normal"
-      ? "normal"
-      : data.overallStatus === "Warning"
-      ? "warning"
-      : "critical";
-
-  return (
-    <div className={`system-status-card ${statusClass} ${newFault ? "flash-alert" : ""}`}>
-      <div className="card-header">
-        <h3>System Status</h3>
-        <div className={`status-badge ${statusClass}`}>
-          <span className="status-dot"></span>
-          <span>{data.overallStatus}</span>
-        </div>
-      </div>
-
-      <div className="card-content">
-        <div className="status-item">
-          <span className="label">Active Fault:</span>
-          <span className="value">{data.activeFault || "None"}</span>
-        </div>
-        <div className="status-item">
-          <span className="label">Model Confidence:</span>
-          <span className="value">{data.modelConfidence}%</span>
-        </div>
-        <div className="status-item">
-          <span className="label">Last Inspection:</span>
-          <span className="value">
-            {new Date(data.lastInspection || Date.now()).toLocaleDateString()}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ============================================
 // PREDICTION PANEL
 // ============================================
-export const PredictionPanel = ({ prediction }) => {
+export const PredictionPanel = ({ prediction, activeFault }) => {
   if (!prediction) return null;
 
   const severity =
@@ -213,6 +169,11 @@ export const PredictionPanel = ({ prediction }) => {
         <div className="status-item prediction-detail">
           <span className="label">Backend Status:</span>
           <span className="value">{prediction.finalStatus || "Unknown"}</span>
+        </div>
+
+        <div className="status-item prediction-detail">
+          <span className="label">Active Fault:</span>
+          <span className="value">{activeFault || "None"}</span>
         </div>
 
         {prediction.faultType && prediction.faultType !== "None" && (
@@ -268,20 +229,7 @@ export const PredictionPanel = ({ prediction }) => {
           </div>
         )}
 
-        <div className="confidence-section">
-          <div className="confidence-header">
-            <span>Confidence Level</span>
-            <span className="confidence-percentage">
-              {(prediction.confidence * 100).toFixed(1)}%
-            </span>
-          </div>
-          <div className="confidence-bar-bg">
-            <div
-              className={`confidence-bar ${severity}`}
-              style={{ width: `${(prediction.confidence * 100).toFixed(0)}%` }}
-            />
-          </div>
-        </div>
+       
 
         {(prediction.t1_timestamp || prediction.t2_timestamp) && (
           <div className="prediction-timing-box">
@@ -864,10 +812,7 @@ export const MaintenanceBox = ({ machineData, prediction }) => {
                   : "LOW"}
               </span>
             </div>
-            <div className="detail-row">
-              <span>Confidence:</span>
-              <span>{(prediction.confidence * 100).toFixed(1)}%</span>
-            </div>
+            
           </div>
         </div>
       </div>

@@ -1,6 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
-  SystemStatusCard,
   MachineHealthCard,
   MaintenanceBox,
   PredictionPanel,
@@ -12,9 +11,7 @@ import {
 } from "../components/dashboard-components";
 import { Loading } from "../components/Loading";
 import {
-  getMachineTelemetry,
-  connectToLiveStream,
-  getTelemetryHistory,
+  getAlignedTelemetryFromCloud,
   getFullInference,
   mapInferenceToSystemStatus,
   mapInferenceToPrediction,
@@ -40,38 +37,84 @@ const Dashboard = () => {
   const [dataSource, setDataSource] = useState("live");
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  const previousPredictionRef = useRef(null);
+
+  const applyDashboardData = (inference, alignedTelemetry, windowSize) => {
+    if (!inference) return;
+
+    const system = mapInferenceToSystemStatus(inference);
+    const pred = mapInferenceToPrediction(inference);
+    const degradation = mapInferenceToDegradationData(inference);
+
+    const filteredTelemetry =
+      windowSize === 10000
+        ? alignedTelemetry
+        : alignedTelemetry.slice(-windowSize);
+
+    const latestTelemetry = filteredTelemetry[filteredTelemetry.length - 1] || null;
+
+    const previousPrediction = previousPredictionRef.current;
+    if (pred?.prediction === "faulty" && previousPrediction !== "faulty") {
+      setNewFaultDetected(true);
+      setTimeout(() => setNewFaultDetected(false), 3000);
+    }
+    previousPredictionRef.current = pred?.prediction ?? null;
+
+    setSystemData(system);
+    setPrediction(pred);
+    setDegradationData(degradation);
+
+    setVibrationData(
+      filteredTelemetry.map((item) => ({
+        time: item.time,
+        value: item.vibration,
+      }))
+    );
+
+    setTemperatureData(
+      filteredTelemetry.map((item) => ({
+        time: item.time,
+        value: item.temperature,
+      }))
+    );
+
+    setCurrentData(
+      filteredTelemetry.map((item) => ({
+        time: item.time,
+        value: item.current,
+      }))
+    );
+
+    setMachineData({
+      vibrationRMS: latestTelemetry?.vibration ?? 0,
+      temperature: latestTelemetry?.temperature ?? 0,
+      current: latestTelemetry?.current ?? 0,
+      status: system?.overallStatus || "Normal",
+    });
+
+    setLastUpdate(new Date());
+    setIsStreaming(true);
+  };
+
+  const fetchDashboardData = async (windowSize) => {
+    const inference = await getFullInference();
+    const windowTimestamps = Array.isArray(inference?.window_timestamps)
+      ? inference.window_timestamps
+      : [];
+
+    const alignedTelemetry = await getAlignedTelemetryFromCloud(windowTimestamps);
+    applyDashboardData(inference, alignedTelemetry, windowSize);
+  };
+
   useEffect(() => {
     const fetchInitialData = async () => {
       setLoading(true);
+
       try {
-        const [telemetry, inference] = await Promise.all([
-          getMachineTelemetry(),
-          getFullInference(),
-        ]);
-
-        const system = mapInferenceToSystemStatus(inference);
-        const pred = mapInferenceToPrediction(inference);
-        const degradation = mapInferenceToDegradationData(inference);
-
-        setSystemData(system);
-        setPrediction(pred);
-
-        setMachineData({
-          vibrationRMS: telemetry.vibration,
-          temperature: telemetry.temperature,
-          current: telemetry.current,
-        });
-
-        setVibrationData([{ time: telemetry.timestamp, value: telemetry.vibration }]);
-        setTemperatureData([{ time: telemetry.timestamp, value: telemetry.temperature }]);
-        setCurrentData([{ time: telemetry.timestamp, value: telemetry.current }]);
-
-        setDegradationData(degradation);
-
+        await fetchDashboardData(timeWindow);
         setError(null);
-        setIsStreaming(true);
       } catch (err) {
-        setError(err.message);
+        setError(err?.message || "Failed to load dashboard");
         setIsStreaming(false);
         console.error("Error fetching initial data:", err);
       } finally {
@@ -88,135 +131,65 @@ const Dashboard = () => {
     setIsPaused(true);
 
     try {
-      const history = await getTelemetryHistory();
-
-      if (history && history.length > 0) {
-        const filteredHistory = timeWindow === 10000 ? history : history.slice(-timeWindow);
-
-        setVibrationData(
-          filteredHistory.map((item) => ({
-            time: item.time,
-            value: item.vibration,
-          }))
-        );
-
-        setTemperatureData(
-          filteredHistory.map((item) => ({
-            time: item.time,
-            value: item.temperature,
-          }))
-        );
-
-        setCurrentData(
-          filteredHistory.map((item) => ({
-            time: item.time,
-            value: item.current,
-          }))
-        );
-      }
+      await fetchDashboardData(timeWindow);
     } catch (err) {
       console.error("Error loading history:", err);
+      setIsStreaming(false);
     } finally {
       setHistoryLoading(false);
     }
   };
 
-  const switchToLiveMode = () => {
+  const switchToLiveMode = async () => {
     setDataSource("live");
     setIsPaused(false);
-    setVibrationData([]);
-    setTemperatureData([]);
-    setCurrentData([]);
+
+    try {
+      await fetchDashboardData(timeWindow);
+    } catch (err) {
+      console.error("Error switching to live mode:", err);
+      setIsStreaming(false);
+    }
   };
 
   useEffect(() => {
-    const fetchPredictionAndDegradation = async () => {
+    let isMounted = true;
+
+    const fetchAllData = async () => {
+      if (isPaused) return;
+
       try {
         const inference = await getFullInference();
+        const windowTimestamps = Array.isArray(inference?.window_timestamps)
+          ? inference.window_timestamps
+          : [];
 
-        const system = mapInferenceToSystemStatus(inference);
-        const pred = mapInferenceToPrediction(inference);
-        const degradation = mapInferenceToDegradationData(inference);
+        const alignedTelemetry = await getAlignedTelemetryFromCloud(windowTimestamps);
 
-        if (pred.prediction === "faulty" && prediction?.prediction !== "faulty") {
-          setNewFaultDetected(true);
-          setTimeout(() => setNewFaultDetected(false), 3000);
-        }
-
-        setSystemData(system);
-        setPrediction(pred);
-        setDegradationData(degradation);
+        if (!isMounted || !inference) return;
+        applyDashboardData(inference, alignedTelemetry, timeWindow);
       } catch (err) {
-        console.error("Error fetching prediction/degradation:", err);
+        console.error("Error fetching dashboard data:", err);
+        if (isMounted) setIsStreaming(false);
       }
     };
 
-    fetchPredictionAndDegradation();
-    const interval = setInterval(fetchPredictionAndDegradation, 5000);
+    fetchAllData();
+    const interval = setInterval(fetchAllData, 5000);
 
-    return () => clearInterval(interval);
-  }, [prediction?.prediction]);
-
-  useEffect(() => {
-    if (isPaused || dataSource === "history") return;
-
-    const cleanup = connectToLiveStream(
-      (data) => {
-        setLastUpdate(new Date());
-        setIsStreaming(true);
-
-        setMachineData((prev) => ({
-          ...prev,
-          vibrationRMS: data.vibration,
-          temperature: data.temperature,
-          current: data.current,
-        }));
-
-        setVibrationData((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.time === data.timestamp) return prev;
-          return [
-            ...prev.slice(-(timeWindow - 1)),
-            { time: data.timestamp, value: data.vibration },
-          ];
-        });
-
-        setTemperatureData((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.time === data.timestamp) return prev;
-          return [
-            ...prev.slice(-(timeWindow - 1)),
-            { time: data.timestamp, value: data.temperature },
-          ];
-        });
-
-        setCurrentData((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.time === data.timestamp) return prev;
-          return [
-            ...prev.slice(-(timeWindow - 1)),
-            { time: data.timestamp, value: data.current },
-          ];
-        });
-      },
-      (streamError) => {
-        console.error("Live stream error:", streamError);
-        setIsStreaming(false);
-      },
-      5000
-    );
-
-    return cleanup;
-  }, [isPaused, timeWindow, dataSource]);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [isPaused, timeWindow]);
 
   useEffect(() => {
     if (dataSource === "history") {
       loadHistoryData();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeWindow]);
 
-  const handlePauseResume = () => setIsPaused(!isPaused);
+  const handlePauseResume = () => setIsPaused((prev) => !prev);
 
   const handleResetData = () => {
     setVibrationData([]);
@@ -267,9 +240,12 @@ const Dashboard = () => {
         historyLoading={historyLoading}
       />
 
-      <div className="top-row">
-        <SystemStatusCard data={systemData} newFault={newFaultDetected} />
-        <PredictionPanel prediction={prediction} />
+      <div className="top-row single-panel">
+        <PredictionPanel
+          prediction={prediction}
+          activeFault={systemData?.activeFault}
+          newFault={newFaultDetected}
+        />
       </div>
 
       <MachineHealthCard machine={machineData} />
@@ -298,4 +274,3 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
-s

@@ -1231,3 +1231,12 @@
 .anomaly-card-span {
   grid-column: 1 / -1;
 }
+
+.top-row.single-panel {
+  display: block;
+}
+
+.top-row.single-panel .prediction-panel {
+  width: 100%;
+  max-width: 100%;
+}
