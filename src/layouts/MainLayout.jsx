@@ -19,12 +19,7 @@ const MainLayout = ({ children }) => {
           <Link to="/" className={`nav-link ${isActive("/")}`}>
             Dashboard
           </Link>
-          <Link to="/analytics" className={`nav-link ${isActive("/analytics")}`}>
-            Analytics
-          </Link>
-          <Link to="/settings" className={`nav-link ${isActive("/settings")}`}>
-            Settings
-          </Link>
+         
         </div>
       </nav>
       <main className="main-content">{children}</main>
