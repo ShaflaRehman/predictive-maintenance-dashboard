@@ -11,7 +11,7 @@ import {
 } from "../components/dashboard-components";
 import { Loading } from "../components/Loading";
 import {
-  getAlignedTelemetryFromCloud,
+  getTelemetryHistory,   // ✅ CHANGED (was aligned telemetry logic)
   getFullInference,
   mapInferenceToSystemStatus,
   mapInferenceToPrediction,
@@ -22,11 +22,14 @@ import "../styles/dashboard.css";
 const Dashboard = () => {
   const [systemData, setSystemData] = useState(null);
   const [machineData, setMachineData] = useState(null);
+
   const [vibrationData, setVibrationData] = useState([]);
   const [temperatureData, setTemperatureData] = useState([]);
   const [currentData, setCurrentData] = useState([]);
+
   const [prediction, setPrediction] = useState(null);
   const [degradationData, setDegradationData] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(new Date());
@@ -39,20 +42,23 @@ const Dashboard = () => {
 
   const previousPredictionRef = useRef(null);
 
-  const applyDashboardData = (inference, alignedTelemetry, windowSize) => {
+  // ==============================
+  // APPLY DATA
+  // ==============================
+  const applyDashboardData = (inference, telemetry) => {
     if (!inference) return;
 
     const system = mapInferenceToSystemStatus(inference);
     const pred = mapInferenceToPrediction(inference);
     const degradation = mapInferenceToDegradationData(inference);
 
-    const filteredTelemetry =
-      windowSize === 10000
-        ? alignedTelemetry
-        : alignedTelemetry.slice(-windowSize);
+    // ✅ RAW SENSOR DATA (FROM TELEMETRY HISTORY)
+    const filteredTelemetry = telemetry;
 
-    const latestTelemetry = filteredTelemetry[filteredTelemetry.length - 1] || null;
+    const latestTelemetry =
+      filteredTelemetry[filteredTelemetry.length - 1] || null;
 
+    // Fault detection trigger (unchanged)
     const previousPrediction = previousPredictionRef.current;
     if (pred?.prediction === "faulty" && previousPrediction !== "faulty") {
       setNewFaultDetected(true);
@@ -60,27 +66,31 @@ const Dashboard = () => {
     }
     previousPredictionRef.current = pred?.prediction ?? null;
 
+    // ==============================
+    // STATE UPDATES
+    // ==============================
     setSystemData(system);
     setPrediction(pred);
     setDegradationData(degradation);
 
+    // 📡 TELEMETRY GRAPHS (ONLY FROM HISTORY)
     setVibrationData(
       filteredTelemetry.map((item) => ({
-        time: item.time,
+        time: item.timestamp,
         value: item.vibration,
       }))
     );
 
     setTemperatureData(
       filteredTelemetry.map((item) => ({
-        time: item.time,
+        time: item.timestamp,
         value: item.temperature,
       }))
     );
 
     setCurrentData(
       filteredTelemetry.map((item) => ({
-        time: item.time,
+        time: item.timestamp,
         value: item.current,
       }))
     );
@@ -96,16 +106,21 @@ const Dashboard = () => {
     setIsStreaming(true);
   };
 
+  // ==============================
+  // FETCH DATA
+  // ==============================
   const fetchDashboardData = async (windowSize) => {
     const inference = await getFullInference();
-    const windowTimestamps = Array.isArray(inference?.window_timestamps)
-      ? inference.window_timestamps
-      : [];
 
-    const alignedTelemetry = await getAlignedTelemetryFromCloud(windowTimestamps);
-    applyDashboardData(inference, alignedTelemetry, windowSize);
+    // ✅ ONLY TELEMETRY HISTORY (NO ALIGNMENT, NO INFERENCE TIMESTAMPS)
+    const telemetry = await getTelemetryHistory(windowSize);
+
+    applyDashboardData(inference, telemetry);
   };
 
+  // ==============================
+  // INITIAL LOAD
+  // ==============================
   useEffect(() => {
     const fetchInitialData = async () => {
       setLoading(true);
@@ -116,7 +131,7 @@ const Dashboard = () => {
       } catch (err) {
         setError(err?.message || "Failed to load dashboard");
         setIsStreaming(false);
-        console.error("Error fetching initial data:", err);
+        console.error(err);
       } finally {
         setLoading(false);
       }
@@ -125,33 +140,9 @@ const Dashboard = () => {
     fetchInitialData();
   }, []);
 
-  const loadHistoryData = async () => {
-    setHistoryLoading(true);
-    setDataSource("history");
-    setIsPaused(true);
-
-    try {
-      await fetchDashboardData(timeWindow);
-    } catch (err) {
-      console.error("Error loading history:", err);
-      setIsStreaming(false);
-    } finally {
-      setHistoryLoading(false);
-    }
-  };
-
-  const switchToLiveMode = async () => {
-    setDataSource("live");
-    setIsPaused(false);
-
-    try {
-      await fetchDashboardData(timeWindow);
-    } catch (err) {
-      console.error("Error switching to live mode:", err);
-      setIsStreaming(false);
-    }
-  };
-
+  // ==============================
+  // LIVE UPDATE LOOP
+  // ==============================
   useEffect(() => {
     let isMounted = true;
 
@@ -160,16 +151,13 @@ const Dashboard = () => {
 
       try {
         const inference = await getFullInference();
-        const windowTimestamps = Array.isArray(inference?.window_timestamps)
-          ? inference.window_timestamps
-          : [];
+        const telemetry = await getTelemetryHistory(timeWindow);
 
-        const alignedTelemetry = await getAlignedTelemetryFromCloud(windowTimestamps);
+        if (!isMounted) return;
 
-        if (!isMounted || !inference) return;
-        applyDashboardData(inference, alignedTelemetry, timeWindow);
+        applyDashboardData(inference, telemetry);
       } catch (err) {
-        console.error("Error fetching dashboard data:", err);
+        console.error(err);
         if (isMounted) setIsStreaming(false);
       }
     };
@@ -183,13 +171,10 @@ const Dashboard = () => {
     };
   }, [isPaused, timeWindow]);
 
-  useEffect(() => {
-    if (dataSource === "history") {
-      loadHistoryData();
-    }
-  }, [timeWindow]);
-
-  const handlePauseResume = () => setIsPaused((prev) => !prev);
+  // ==============================
+  // HANDLERS (UNCHANGED)
+  // ==============================
+  const handlePauseResume = () => setIsPaused((p) => !p);
 
   const handleResetData = () => {
     setVibrationData([]);
@@ -197,8 +182,29 @@ const Dashboard = () => {
     setCurrentData([]);
   };
 
-  const handleTimeWindowChange = (window) => setTimeWindow(window);
+  const handleTimeWindowChange = (w) => setTimeWindow(w);
 
+  const loadHistoryData = async () => {
+    setHistoryLoading(true);
+    setDataSource("history");
+    setIsPaused(true);
+
+    try {
+      await fetchDashboardData(timeWindow);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const switchToLiveMode = async () => {
+    setDataSource("live");
+    setIsPaused(false);
+    await fetchDashboardData(timeWindow);
+  };
+
+  // ==============================
+  // LOADING / ERROR
+  // ==============================
   if (loading) return <Loading />;
 
   if (error) {
@@ -213,19 +219,22 @@ const Dashboard = () => {
     );
   }
 
+  // ==============================
+  // UI
+  // ==============================
   return (
     <div className="dashboard">
+
       <div className="dashboard-header">
         <div className="header-left">
           <h1>Machine Health Monitoring</h1>
           <p className="subtitle">Environment - 07 | Wiser Factory</p>
         </div>
-        <div className="header-controls">
-          <LiveIndicator
-            isStreaming={isStreaming && dataSource === "live"}
-            lastUpdate={lastUpdate}
-          />
-        </div>
+
+        <LiveIndicator
+          isStreaming={isStreaming && dataSource === "live"}
+          lastUpdate={lastUpdate}
+        />
       </div>
 
       <ControlPanel
@@ -240,15 +249,13 @@ const Dashboard = () => {
         historyLoading={historyLoading}
       />
 
-      <div className="top-row single-panel">
-        <PredictionPanel
-          prediction={prediction}
-          activeFault={systemData?.activeFault}
-          newFault={newFaultDetected}
-        />
-      </div>
+      <PredictionPanel
+        prediction={prediction}
+        activeFault={systemData?.activeFault}
+        newFault={newFaultDetected}
+      />
 
-      <MachineHealthCard machine={machineData} />
+      <MachineHealthCard machine={machineData} prediction={prediction} />
 
       <StatsPanel
         vibrationData={vibrationData}
@@ -269,6 +276,7 @@ const Dashboard = () => {
       />
 
       <MaintenanceBox machineData={machineData} prediction={prediction} />
+
     </div>
   );
 };

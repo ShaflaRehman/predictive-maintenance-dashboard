@@ -36,23 +36,13 @@ export const LiveIndicator = ({ isStreaming, lastUpdate }) => {
 // ============================================
 export const ControlPanel = ({
   isPaused,
-  timeWindow,
   onPauseResume,
   onReset,
-  onTimeWindowChange,
   dataSource = "live",
   onLoadHistory,
   onSwitchToLive,
   historyLoading = false,
 }) => {
-  const timeWindowOptions = [
-    { label: "50 pts", value: 50 },
-    { label: "100 pts", value: 100 },
-    { label: "200 pts", value: 200 },
-    { label: "500 pts", value: 500 },
-    { label: "All", value: 10000 },
-  ];
-
   return (
     <div className="control-panel">
       <div className="control-group">
@@ -65,63 +55,18 @@ export const ControlPanel = ({
           >
             {dataSource === "live" && "● "} Live Stream
           </button>
-          <button
-            className={`btn ${dataSource === "history" ? "btn-primary" : "btn-secondary"}`}
-            onClick={onLoadHistory}
-            disabled={historyLoading || dataSource === "history"}
-          >
-            {historyLoading
-              ? "Loading..."
-              : dataSource === "history"
-              ? "● History"
-              : "Load History"}
-          </button>
         </div>
       </div>
-
-      <div className="control-group">
-        <label>Time Window:</label>
-        <div className="time-window-buttons">
-          {timeWindowOptions.map((option) => (
-            <button
-              key={option.value}
-              className={`btn ${timeWindow === option.value ? "btn-primary" : "btn-secondary"}`}
-              onClick={() => onTimeWindowChange(option.value)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {dataSource === "live" && (
-        <div className="control-group">
-          <label>Stream Control:</label>
-          <div className="stream-buttons">
-            <button className="btn btn-secondary" onClick={onPauseResume}>
-              {isPaused ? "▶ Resume" : "⏸ Pause"}
-            </button>
-            <button className="btn btn-secondary" onClick={onReset}>
-              🔄 Reset
-            </button>
-          </div>
-        </div>
-      )}
 
       <div className="control-info">
-        {dataSource === "live" ? (
-          <span className="info-text">
-            {isPaused ? "⏸ Stream paused" : "● Live streaming data"}
-          </span>
-        ) : (
-          <span className="info-text">
-            📊 Viewing historical data ({timeWindow === 10000 ? "All" : timeWindow} points)
-          </span>
-        )}
+        <span className="info-text">
+          {isPaused ? "⏸ Stream paused" : "● Live streaming data"}
+        </span>
       </div>
     </div>
   );
 };
+
 
 // ============================================
 // PREDICTION PANEL
@@ -155,13 +100,13 @@ export const PredictionPanel = ({ prediction, activeFault }) => {
 
       <div className="prediction-content">
         <div className="prediction-main">
-          <div className={`prediction-icon ${prediction.prediction}`}>
-            {prediction.prediction === "faulty" ? "⚠️" : "✓"}
+          <div className={`prediction-icon ${prediction.prediction}`}>{prediction.prediction === "faulty"? "⚠️": prediction.finalStatus === "Insufficient Data" ? "⏳" : "✓"}
+            
           </div>
           <div className="prediction-text">
             <span className="prediction-label">Status</span>
-            <span className={`prediction-status ${prediction.prediction}`}>
-              {prediction.prediction === "faulty" ? "Fault Detected" : "Normal Operation"}
+            <span className={`prediction-status ${prediction.prediction}`}>{prediction.prediction === "faulty"? "Fault Detected" : prediction.finalStatus === "Insufficient Data" ? "Insufficient Data": "Normal Operation"}
+
             </span>
           </div>
         </div>
@@ -261,116 +206,26 @@ export const PredictionPanel = ({ prediction, activeFault }) => {
 // ============================================
 // MACHINE HEALTH CARD
 // ============================================
-export const MachineHealthCard = ({ machine }) => {
+export const MachineHealthCard = ({ machine, prediction }) => {  // add prediction prop
   if (!machine) return null;
 
-  const getThresholdStatus = (value, type) => {
-    if (type === "vibration") {
-      if (value > 0.7) return { status: "critical", label: "Critical" };
-      if (value > 0.5) return { status: "warning", label: "Warning" };
-      return { status: "normal", label: "Normal" };
-    }
-    if (type === "temperature") {
-      if (value > 75) return { status: "critical", label: "Critical" };
-      if (value > 65) return { status: "warning", label: "Warning" };
-      return { status: "normal", label: "Normal" };
-    }
-    if (type === "current") {
-      if (value > 12) return { status: "critical", label: "Critical" };
-      if (value > 10) return { status: "warning", label: "Warning" };
-      return { status: "normal", label: "Normal" };
-    }
-    return { status: "normal", label: "Normal" };
-  };
+  // Override status display if insufficient data
+  const displayStatus = prediction?.finalStatus === "Insufficient Data"
+    ? "Warning"
+    : machine.status || "Normal";
 
-  const vibStatus = getThresholdStatus(machine.vibrationRMS || 0, "vibration");
-  const tempStatus = getThresholdStatus(machine.temperature || 0, "temperature");
-  const currStatus = getThresholdStatus(machine.current || 0, "current");
+  // ... rest of your code ...
 
   return (
     <div className="machine-health-card">
       <div className="card-header">
         <h3>Machine Health Metrics</h3>
-        <div className={`overall-health ${machine.status?.toLowerCase() || "normal"}`}>
+        <div className={`overall-health ${displayStatus.toLowerCase()}`}>
           <span className="health-dot"></span>
-          <span>{machine.status || "Normal"}</span>
+          <span>{displayStatus}</span>  {/* ← was machine.status */}
         </div>
       </div>
-
-      <div className="metrics-grid">
-        <div className="metric-card">
-          <div className="metric-icon temperature">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
-              <path d="M12 6V12L16 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          </div>
-          <div className="metric-info">
-            <span className="metric-label">Ambient Temperature</span>
-            <span className={`metric-value ${tempStatus.status}`}>
-              {machine.temperature?.toFixed(1) || "0.0"}°C
-            </span>
-            <span className={`metric-status ${tempStatus.status}`}>{tempStatus.label}</span>
-          </div>
-          <div className="metric-progress">
-            <div
-              className={`progress-bar ${tempStatus.status}`}
-              style={{ width: `${Math.min(((machine.temperature || 0) / 100) * 100, 100)}%` }}
-            />
-          </div>
-        </div>
-
-        <div className="metric-card">
-          <div className="metric-icon humidity">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M12 2.69L17.66 8.35C20.78 11.47 20.78 16.53 17.66 19.65C14.54 22.77 9.46 22.77 6.34 19.65C3.22 16.53 3.22 11.47 6.34 8.35L12 2.69Z"
-                stroke="currentColor"
-                strokeWidth="2"
-              />
-            </svg>
-          </div>
-          <div className="metric-info">
-            <span className="metric-label">Vibration RMS</span>
-            <span className={`metric-value ${vibStatus.status}`}>
-              {machine.vibrationRMS?.toFixed(3) || "0.000"} g
-            </span>
-            <span className={`metric-status ${vibStatus.status}`}>{vibStatus.label}</span>
-          </div>
-          <div className="metric-progress">
-            <div
-              className={`progress-bar ${vibStatus.status}`}
-              style={{ width: `${Math.min(((machine.vibrationRMS || 0) / 1) * 100, 100)}%` }}
-            />
-          </div>
-        </div>
-
-        <div className="metric-card">
-          <div className="metric-icon current">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M13 2L3 14H12L11 22L21 10H12L13 2Z"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </div>
-          <div className="metric-info">
-            <span className="metric-label">Current Draw</span>
-            <span className={`metric-value ${currStatus.status}`}>
-              {machine.current?.toFixed(1) || "0.0"} A
-            </span>
-            <span className={`metric-status ${currStatus.status}`}>{currStatus.label}</span>
-          </div>
-          <div className="metric-progress">
-            <div
-              className={`progress-bar ${currStatus.status}`}
-              style={{ width: `${Math.min(((machine.current || 0) / 15) * 100, 100)}%` }}
-            />
-          </div>
-        </div>
-      </div>
+      {/* ... */}
     </div>
   );
 };
@@ -610,14 +465,6 @@ export const DegradationCharts = ({ degradationData, prediction }) => {
   if (!degradationData || degradationData.length === 0) return null;
 
   const anomalyPoints = degradationData.filter((d) => d.anomaly === 1);
-  const firstPoint =
-    prediction?.t1 !== null && prediction?.t1 !== undefined
-      ? degradationData[prediction.t1]
-      : null;
-  const confirmedPoint =
-    prediction?.t2 !== null && prediction?.t2 !== undefined
-      ? degradationData[prediction.t2]
-      : null;
 
   return (
     <div className="telemetry-section">
@@ -630,13 +477,37 @@ export const DegradationCharts = ({ degradationData, prediction }) => {
             <span className="chart-unit">MAE vs time</span>
           </div>
 
-          <ResponsiveContainer width="100%" height={360}>
-            <LineChart data={degradationData}>
+          <ResponsiveContainer width="100%" height={400}>
+            <LineChart
+              data={degradationData}
+              margin={{ top: 20, right: 30, left: 10, bottom: 60 }}
+            >
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="x" tick={{ fontSize: 11, fill: "#7f8c8d" }} />
+
+              <XAxis
+                dataKey="x"
+                type="number"
+                domain={[0, "dataMax"]}
+                ticks={degradationData.map((_, i) => i)}
+                tickFormatter={(val) => {
+                  const point = degradationData[val];
+                  return point?.label ?? val;
+                }}
+                tick={{ fontSize: 10, fill: "#7f8c8d", angle: -45, textAnchor: "end" }}
+                interval={0}
+                height={60}
+              />
+
               <YAxis tick={{ fontSize: 11, fill: "#7f8c8d" }} />
-              <Tooltip />
-              <Legend />
+
+              <Tooltip
+                labelFormatter={(val) => {
+                  const point = degradationData[val];
+                  return `Time: ${point?.label ?? val}`;
+                }}
+              />
+
+              <Legend verticalAlign="top" />
 
               <Line
                 type="monotone"
@@ -663,80 +534,38 @@ export const DegradationCharts = ({ degradationData, prediction }) => {
                 fill="#f97316"
               />
 
-              {firstPoint && (
+              {/* T1 — predicted fault */}
+              {prediction?.t1 !== null && prediction?.t1 !== undefined && (
                 <ReferenceLine
-                  x={firstPoint.x}
+                  x={prediction.t1}
                   stroke="#f59e0b"
+                  strokeWidth={2}
                   strokeDasharray="6 4"
-                  label={`First: ${prediction?.t1_timestamp || "N/A"}`}
+                  label={{
+                    value: `T1: ${prediction.t1_timestamp ?? ""} (Predicted Fault)`,
+                    position: "insideTopLeft",
+                    fontSize: 11,
+                    fill: "#f59e0b",
+                  }}
                 />
               )}
 
-              {confirmedPoint && (
+              {/* T2 — actual fault confirmed */}
+              {prediction?.t2 !== null && prediction?.t2 !== undefined && (
                 <ReferenceLine
-                  x={confirmedPoint.x}
+                  x={prediction.t2}
                   stroke="#dc2626"
-                  label={`Confirmed: ${prediction?.t2_timestamp || "N/A"}`}
+                  strokeWidth={2}
+                  label={{
+                    value: `T2: ${prediction.t2_timestamp ?? ""} (Actual Fault)`,
+                    position: "insideTopRight",
+                    fontSize: 11,
+                    fill: "#dc2626",
+                  }}
                 />
               )}
+
             </LineChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="chart-card">
-          <div className="chart-header">
-            <h4>Smoothed Degradation Trend</h4>
-            <span className="chart-unit">Rolling error trend</span>
-          </div>
-
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={degradationData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="x" tick={{ fontSize: 11, fill: "#7f8c8d" }} />
-              <YAxis tick={{ fontSize: 11, fill: "#7f8c8d" }} />
-              <Tooltip />
-              <Legend />
-              <Line
-                type="monotone"
-                dataKey="smoothError"
-                stroke="#10b981"
-                dot={false}
-                strokeWidth={2}
-                name="Smoothed Error"
-              />
-              <Line
-                type="monotone"
-                dataKey="threshold"
-                stroke="#ef4444"
-                dot={false}
-                strokeDasharray="8 4"
-                name="Threshold"
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="chart-card">
-          <div className="chart-header">
-            <h4>Health Score Trend</h4>
-            <span className="chart-unit">%</span>
-          </div>
-
-          <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={degradationData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="x" tick={{ fontSize: 11, fill: "#7f8c8d" }} />
-              <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#7f8c8d" }} />
-              <Tooltip />
-              <Area
-                type="monotone"
-                dataKey="healthScore"
-                stroke="#10b981"
-                fillOpacity={0.25}
-                fill="#10b981"
-                strokeWidth={2}
-              />
-            </AreaChart>
           </ResponsiveContainer>
         </div>
       </div>

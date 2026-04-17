@@ -1,10 +1,4 @@
-import {
-  vibrationData as mockVibrationData,
-  temperatureData as mockTemperatureData,
-  currentData as mockCurrentData,
-  faultHistory as mockFaultHistory,
-  faultStats as mockFaultStats,
-} from "../data/mockData";
+
 
 // ==============================
 // ENDPOINTS
@@ -200,7 +194,8 @@ export const mapInferenceToDegradationData = (inf) => {
 
     return {
       index,
-      x: windowTimestamps[index] ?? index,
+      x: index,                                          // ← integer index for clean x-axis
+      label: windowTimestamps[index] ?? `${index}`,     // ← timestamp stored separately
       error: safeNum(err, 0),
       threshold,
       anomaly: preds[index] === 1 ? 1 : 0,
@@ -375,7 +370,9 @@ export const getMachineTelemetry = async () => {
 
 export const getTelemetryHistory = async (limit = 500) => {
   try {
-    const response = await fetch(`${TELEMETRY_HISTORY_URL}?limit=${limit}`);
+    const query = limit === 10000 ? "all" : limit;
+    const response = await fetch(`${TELEMETRY_HISTORY_URL}?limit=${query}`);
+
     if (!response.ok) throw new Error("Failed to fetch telemetry history");
     const data = await response.json();
 
@@ -407,18 +404,22 @@ export const getTelemetryHistory = async (limit = 500) => {
 };
 
 // Align cloud telemetry to inference window timestamps so x-axis matches degradation chart
-export const getAlignedTelemetryFromCloud = async (windowTimestamps = []) => {
-  const rows = await getTelemetryHistory(500);
+export const getAlignedTelemetryFromCloud = async (
+  windowTimestamps = [],
+  limit = 500
+) => {
+  const rows = await getTelemetryHistory(limit);
 
   if (!rows.length) return [];
 
-  const needed = Array.isArray(windowTimestamps) ? windowTimestamps.length : 0;
+  const needed = Array.isArray(windowTimestamps)
+    ? windowTimestamps.length
+    : 0;
 
-  // Fallback: no inference timestamps available, so show recent cloud telemetry directly
   if (needed === 0) {
     return rows.map((row, index) => ({
-      time: row.time ?? row.timestamp ?? `${index}`,
-      timestamp: row.timestamp ?? row.time ?? `${index}`,
+      time: row.time ?? `${index}`,
+      timestamp: row.timestamp ?? `${index}`,
       vibration: safeNum(row.vibration),
       temperature: safeNum(row.temperature),
       current: safeNum(row.current),
